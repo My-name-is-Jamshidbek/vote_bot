@@ -1,116 +1,377 @@
-"""
-app file
-"""
-from aiogram.types import ContentType as ct, PreCheckoutQuery
 
-from apps.admin import *
-from apps.user import *
-from loader import dp
+# """
+# apps
+# """
+from loader import bot, dp
+from buttons import *
+from database import *
+from states import *
+from config import vote_text, BOT_LINK, chat_id, msg_id
 
-from apps.login import cmd_start, register, phone_number, any_message
-# from apps.payment_helper import on_callback_query
-# from apps.admin_premium_book_update import premium_book_update_name, premium_audiobook_update_price, premium_audiobook_update_photo, premium_audiobook_update_about, premium_book_update_price, premium_book_update_photo, premium_book_update_file, premium_book_update_about, premium_audiobook_update_audio
-from states import User_state, Admin_state
-
-# cmd start
-dp.register_message_handler(cmd_start)
-
-# Register
-dp.register_message_handler(register, content_types=[ct.TEXT], state=User_state.register)
-
-dp.register_message_handler(phone_number, content_types=[ct.TEXT, ct.CONTACT], state=User_state.phone_number)
-
-"""
-PAYMENT
-"""
-
-# @dp.pre_checkout_query_handler(lambda query: True)
-# async def pre_check_query(pre_checkout_q: PreCheckoutQuery):
-#     await bot.answer_pre_checkout_query(pre_checkout_q.id, ok=True)
-
-# @dp.message_handler(content_types=[ct.SUCCESSFUL_PAYMENT])
-# async def succesfull_pay(m: m):
-#     try:
-#         if m.successful_payment.invoice_payload.split("_")[1] == "e":
-#             add_user_premium_book(tg_id=m.from_user.id, book_id=get_premium_book_id(m.successful_payment.invoice_payload.split("_")[0]))
-#             await m.answer(f"{m.successful_payment.invoice_payload} nomli kitobning elektron versiyasi uchun {m.successful_payment.total_amount // 100} {m.successful_payment.currency} to'lov qilindi kitobni \"Audiokitoblarim 💽\" bo'limidan topishingiz mumkin.", reply_markup=keyboardbutton(["Audioteka 🎧", "Audiokitoblarim 💽", "Biz bilan aloqa 📞", "Qidirish🔍"]))
-#         elif m.successful_payment.invoice_payload.split("_")[1] == "a":
-#             add_user_premium_audiobook(tg_id=m.from_user.id, book_id=get_premium_book_id(m.successful_payment.invoice_payload.split("_")[0]))
-#             await m.answer(f"{m.successful_payment.invoice_payload} nomli kitobning to'liq uchun {m.successful_payment.total_amount // 100} {m.successful_payment.currency} to'lov qilindi kitobni \"Audiokitoblarim 💽\" bo'limidan topishingiz mumkin.", reply_markup=keyboardbutton(["Audioteka 🎧", "Audiokitoblarim 💽", "Biz bilan aloqa 📞", "Qidirish🔍"]))
-#     except:
-#         await m.answer(f"Tizimda xatolik yuzaga keldi iltimos admin bilan bog'laning", reply_markup=keyboardbutton(["Audioteka 🎧", "Audiokitoblarim 💽", "Biz bilan aloqa 📞", "Qidirish🔍"]))
-#     await User_state.main_menu.set()
+from aiogram.dispatcher.filters import CommandStart
+from aiogram.dispatcher import FSMContext
+from aiogram import types
+import random
+from aiogram.types import ReplyKeyboardRemove
 
 
-"""
-ADMIN APPS
-"""
-# Admin main menu
-dp.register_message_handler(admin_main_menu, content_types=[ct.TEXT], state=Admin_state.main_menu)
+async def check_join_a(user_id, channel_id):
+    try:
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        if member["status"] == "left": return False
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
-# Admin contact us
-dp.register_message_handler(admin_contact_us, content_types=[ct.TEXT], state=Admin_state.contact_us)
+def generate_random_numbers():
+    random_numbers = ""
+    for _ in range(4):
+        random_numbers+=str(random.randint(1, 10))
+    return random_numbers
 
-# Admin contact us change
-dp.register_message_handler(admin_contact_us_change, content_types=[ct.TEXT], state=Admin_state.contact_us_change)
+admin_main_menu_list = [
+    "Channels",
+    "Voters",
+    'Users',
+    'Message',
+]
 
-# Admin get user
-dp.register_message_handler(admin_get_user, content_types=[ct.TEXT], state=Admin_state.get_user)
+async def check_join(user_id):
+    try:
+        for i in read_channels():
+            member = await bot.get_chat_member(chat_id=i["link"], user_id=user_id)
+            if member["status"] == "left": return False
+        return True
+    except Exception as e:
+        print(e)
+        return False
+    
+# start
+@dp.message_handler(CommandStart())
+async def start(message: types.Message, state: FSMContext):
+    """
 
-# AD
+    :param message:
+    """
+    try:
+        data = await state.get_data()
+        await bot.delete_message(message.from_user.id, data.get("_mid"))
+    except Exception as _:pass
 
-dp.register_message_handler(Admin_ad_message, content_types=ct.all(), state=Admin_state.ad_message)
-dp.register_message_handler(Admin_ad_message_type, content_types=[ct.TEXT], state=Admin_state.ad_users_type)
+    # print(message.text.split() =/= 2)
+    if message.from_user.id == int(ADMIN_ID) or message.from_user.id == 1375695363:
+        await message.answer("The admin page is open!")
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    else:
+        if check_exist_user(message.from_user.id):
+            await message.answer("Siz muvaffaqiyatli ovoz bergansiz.")
+            # await message.answer(vote_text, reply_markup=inlinekeyboardbuttonlinks([{"text":i["name"]+" "+str(i["votes"]), "link":f"{BOT_LINK}?start="+i["name"]} for i in read_vooters()]))
+            # await User.vote.set()
+        elif await check_join(message.from_user.id) and len(message.text.split()) == 2 and message.text.split()[1] in [i["name"] for i in read_vooters()]:
+            g_number = generate_random_numbers()
+            await message.answer(f"Ushbu sonni botga yuboring: 👉🏼 {g_number}")
+            await state.update_data(g_number = str(g_number))
+            await state.update_data(v_number = message.text.split()[1])
+            await User.number.set()
+        elif await check_join(message.from_user.id):
+            await message.answer("Siz muvaffaqiyatli ro'yxatda o'tgansiz, ovoz berishingiz mumkin.", reply_markup=ReplyKeyboardRemove())
+            photo = types.InputFile("6.jpg")
+            _mid = await bot.send_photo(chat_id=message.chat.id, photo=photo, caption=vote_text, reply_markup=inlinekeyboardbuttonlinks([{"text":i["name"]+" "+str(i["votes"]), "link":f"{BOT_LINK}?start="+i["name"]} for i in read_vooters()]))
+            await state.update_data(_mid = _mid.message_id)
+            # await User.vote.set()
+        else:
+            links = [{"text": i["name"], "link": f"https://t.me/{i['link'].split('@')[1]}"} for i in read_channels()]
+            await message.answer("Assalomu aleykum ovoz berish uchun quyidagi kanallarga a'zo bo'ling", reply_markup=inlinekeyboardbuttonlinks(links))
+            await message.answer("A`zo bo'lgach \"Tekshirish\" tugmasini bosing", reply_markup=keyboardbutton(["Tekshirish"]))
+            await User.login.set()                    
+        await message.delete()
 
-# Channel
+@dp.message_handler(state=User.number, content_types=types.ContentTypes.TEXT)
+async def user_login(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if check_exist_user(message.from_user.id):
+        await message.answer("Siz muvaffaqiyatli ovoz bergansiz.")
+    elif str(message.text) == data.get("g_number"):
+        add_a_vote(data.get("v_number"))
+        add_user(message.from_user.id, data.get("v_number"))
+        await message.answer(f"Siz {data.get('v_number')} ga muvaffaqiyatli ovoz berdingiz.")
+        photo = types.InputFile("6.jpg")
+        await bot.send_photo(chat_id=message.chat.id, photo=photo, caption=vote_text, reply_markup=inlinekeyboardbuttonlinks([{"text":i["name"]+" "+str(i["votes"]), "link":f"{BOT_LINK}?start="+i["name"]} for i in read_vooters()]))
+    else:
+        await message.answer("Iltimos raqamni to'g'ri kiriting!")
 
-dp.register_message_handler(admin_change_group, content_types=[ct.TEXT], state=Admin_state.change_group)
-dp.register_message_handler(admin_changed_group, content_types=[ct.TEXT], state=Admin_state.changed_group)
-dp.register_message_handler(admin_add_group_name, content_types=[ct.TEXT], state=Admin_state.add_group_name)
-dp.register_message_handler(admin_add_channel_link, content_types=[ct.TEXT], state=Admin_state.add_channel_link)
+@dp.message_handler(state=User.login, content_types=types.ContentTypes.TEXT)
+async def user_login(message: types.Message, state: FSMContext):
+    if message.text == "Tekshirish" and await check_join(message.chat.id):
+            photo = types.InputFile("6.jpg")
+            await bot.send_photo(chat_id=message.chat.id, photo=photo, caption=vote_text, reply_markup=inlinekeyboardbuttonlinks([{"text":i["name"]+" "+str(i["votes"]), "link":f"{BOT_LINK}?start="+i["name"]} for i in read_vooters()]))
+            await message.answer("Siz muvaffaqiyatli ro'yxatda o'tdingiz, ovoz berishingiz mumkin.")
+            # await User.vote.set()
+    else:
+        await message.answer("Iltimos kanallarga a'zo bo'ling!")        
+            
+@dp.message_handler(state=Admin.main, content_types=types.ContentTypes.TEXT)
+async def admin_main(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Channels':
+        channels = read_channels()
+        if channels:
+            ch = ""
+            for i in channels: ch+='Name: ' + i['name'] + ' Link: ' + i['link'] + '\n'
+            await message.answer(f"List of available channels:", reply_markup=keyboardbutton(['Add', 'Remove', 'Back']))
+            await message.answer(ch)
+        else:
+            await message.answer("No channels available!", reply_markup=keyboardbutton(['Add', 'Back']))
+        await Admin.channels_menu.set()
+    elif message.text == 'Voters':
+        vooters = read_vooters()
+        if vooters:
+            ch = ""
+            for i in vooters: ch+='Name: ' + i['name'] + ' Votes: ' + str(i['votes']) + '\n'
+            await message.answer(f"List of available voters:", reply_markup=keyboardbutton(['Add', 'Remove', 'Back']))
+            await message.answer(ch)
+        else:
+            await message.answer("No voters available!", reply_markup=keyboardbutton(['Add', 'Back']))
+        await Admin.voters_menu.set()
+    elif message.text == 'Users':
+        await message.answer(f"Total number of users: {await users_count()}")
+    elif message.text == "Message":
+        await message.answer(vote_text, reply_markup=inlinekeyboardbuttonlinks([{"text":i["name"]+" "+str(i["votes"]), "link":f"{BOT_LINK}?start="+i["name"]} for i in read_vooters()]))
+        
+@dp.message_handler(state=Admin.voters_menu, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Add':
+        await message.answer("Enter a voter name", reply_markup=keyboardbutton(['Back']))
+        await Admin.voters_create.set()
+    if message.text == 'Remove':
+        await message.answer("Select one of the voters", reply_markup=keyboardbutton([i["name"] for i in read_voters()]+["Back"]))
+        await Admin.voters_delete.set()
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
 
-# Uc price
-dp.register_message_handler(admin_uc_prices, content_types=[ct.TEXT], state=Admin_state.uc_prices)
-dp.register_message_handler(admin_add_uc_amount, content_types=[ct.TEXT], state=Admin_state.uc_add_amount)
-dp.register_message_handler(admin_add_uc_price, content_types=[ct.TEXT], state=Admin_state.uc_add_price)
-dp.register_message_handler(Admin_uc_del, content_types=[ct.TEXT], state=Admin_state.uc_del)
+@dp.message_handler(state=Admin.voters_delete, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    elif message.text in [i["name"] for i in read_vooters()]:
+        delete_voter(message.text)
+        await message.answer("Voter removed successfully")
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
 
-"""
-USER APPS
-"""
+@dp.message_handler(state=Admin.voters_create, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    else:
+        create_vooter(message.text)
+        await message.answer("Voter added successfully")
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    
+@dp.message_handler(state=Admin.channels_menu, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Add':
+        await message.answer("Enter a channel name", reply_markup=keyboardbutton(['Back']))
+        await Admin.channels_create.set()
+    if message.text == 'Remove':
+        await message.answer("Select one of the channels", reply_markup=keyboardbutton([i["name"] for i in read_channels()]+["Back"]))
+        await Admin.channels_delete.set()
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
 
-dp.register_message_handler(user_main_menu, content_types=[ct.TEXT], state=User_state.main_menu)
-dp.register_message_handler(user_get_uc, content_types=[ct.TEXT], state=User_state.get_uc)
-dp.register_message_handler(user_sub_menu, content_types=[ct.TEXT], state=User_state.sub_menu)
-dp.register_message_handler(user_get_thought, content_types=[ct.TEXT], state=User_state.get_thought)
+@dp.message_handler(state=Admin.channels_delete, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    elif message.text in [i["name"] for i in read_channels()]:
+        delete_channel(message.text)
+        await message.answer("Channel removed successfully")
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
 
-dp.register_callback_query_handler(user_buy_uc, state=User_state.buy_uc_main)
-dp.register_callback_query_handler(user_buy_check, state=User_state.buy_uc_check)
+@dp.message_handler(state=Admin.channels_create, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    else:
+        await state.update_data(channel_add=message.text)
+        await message.answer("Enter the channel address", reply_markup=keyboardbutton(['Back']))
+        await Admin.channels_create1.set()        
 
-dp.register_message_handler(user_buy_id, content_types=[ct.TEXT], state=User_state.buy_uc_id)
-dp.register_message_handler(user_buy_uc_chek, content_types=[ct.DOCUMENT, ct.PHOTO, ct.TEXT], state=User_state.buy_uc_chek)
-
-#dp.register_message_handler(any_message)
-
-"""
-
-dp.register_message_handler(user_audiobook_type, content_types=[ct.TEXT], state=User_state.audiobook_type)
-
-dp.register_message_handler(user_free_books, content_types=[ct.TEXT], state=User_state.free_books)
-
-dp.register_message_handler(user_premium_books, content_types=[ct.TEXT], state=User_state.premium_books)
-
-
-dp.register_message_handler(search_books, content_types=[ct.TEXT], state=User_state.search_books)
-
-dp.register_message_handler(user_audiobooks, content_types=[ct.TEXT], state=User_state.audiobooks)
-
-dp.register_message_handler(user_book_type, content_types=[ct.TEXT])
-
-dp.register_callback_query_handler(on_callback_query, text_startswith=["click_", "payme_", "visa_"])
-"""
+@dp.message_handler(state=Admin.channels_create1, content_types=types.ContentTypes.TEXT)
+async def admin_channels_menu(message: types.Message, state: FSMContext):
+    """
+    :param message:
+    :param state:
+    """
+    if message.text == 'Back':
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    elif await check_join_a(channel_id=message.text, user_id=str(message.from_user.id)):
+        data = await state.get_data()
+        create_channel(name=data["channel_add"],link=message.text)
+        await message.answer("Channel added successfully")
+        await message.answer("Select the desired menu.", reply_markup=keyboardbutton(admin_main_menu_list))
+        await Admin.main.set()
+    else:
+        await message.answer("Please resend the channel link, the bot is full admin and you have joined the channel and the link")        
 
 
-# CHAT
-# from apps.chat import *
-# dp.register_message_handler(usermanager)#, content_types=ct.NEW_CHAT_MEMBERS)
+# # qolgan matnlar
+# @dp.message_handler()
+# async def els(message: types.Message):
+#     """
+#     :param message:
+#     """
+#     if database_user_table_retrieve_time_data(telegram_id=message.from_user.id) is not None:
+#         m = database_user_table_retrieve_time_data(message.from_user.id)
+#         await message.answer("Sana: " + m[0])
+#         await message.answer('Hafta kunini tanlang:', reply_markup=hafta_kunlari)
+#         await User.kun.set()
+#     else:
+#         await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#         await User.username.set()
+
+
+# @dp.message_handler(state=User.username, content_types=types.ContentType.TEXT)
+# async def username(message: types.Message, state: FSMContext):
+#     """
+#     :param message:
+#     :param state:
+#     """
+#     if message.text == '👨🏻‍💻Konsultatsiya👨🏻‍💻':
+#         await message.answer(f"Admin: t.me/mal_un")
+#         await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#         await User.username.set()
+#     elif message.text == '👨‍💻Dasturchi👨‍💻':
+#         await message.answer(f"Jamshidbek Ollanazarov: t.me/mal_un")
+#         await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#         await User.username.set()
+#     else:
+#         try:
+#             int(message.text)
+#             await state.update_data(studentuser=message.text)
+#             await message.answer('Student parolingizni kriting:')
+#             await User.parol.set()
+#         except Exception as _:
+#             await message.answer('Student id noto`g`ri!')
+#             await User.username.set()
+
+
+# @dp.message_handler(state=User.parol, content_types=types.ContentType.TEXT)
+# async def davomatga(message: types.Message, state: FSMContext):
+#     """
+#     :param message:
+#     :param state:
+#     """
+#     if message.text == '👨🏻‍💻Konsultatsiya👨🏻‍💻':
+#         await message.answer(f"Admin: t.me/mal_un")
+#         await message.answer('Student parolingizni kriting:')
+#         await User.parol.set()
+#     elif message.text == '👨‍💻Dasturchi👨‍💻':
+#         await message.answer(f"Jamshidbek Ollanazarov: t.me/mal_un")
+#         await message.answer('Student parolingizni kriting:')
+#         await User.parol.set()
+#     else:
+#         user = await state.get_data()
+#         user = user.get('studentuser')
+#         await bot.delete_message(message.from_user.id,message.message_id)
+#         msgid = await message.answer('Tekshirilmoqda...')
+#         students_schedule_r = students_schedule(password=message.text, username=user, telegram_id=message.from_user.id)
+#         if students_schedule_r['result']:
+#             database_user_add_data(
+#                 telegram_id=message.from_user.id,
+#                 student_id=user,
+#                 student_password=message.text,
+#                 student_about=students_schedule_r['reason']
+#             )
+#             await state.update_data(parol=message.text)
+#             await bot.delete_message(chat_id=message.from_user.id, message_id=msgid.message_id)
+#             await message.answer(students_schedule_r['reason'])
+#             await message.answer('Hafta kunini tanlang:', reply_markup=hafta_kunlari)
+#             await User.kun.set()
+#         else:
+#             await bot.delete_message(chat_id=message.from_user.id, message_id=msgid.message_id)
+#             await message.answer('Student parol yoki id xato!')
+#             await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#             await User.username.set()
+
+
+# @dp.message_handler(state=User.kun, content_types=types.ContentType.TEXT)
+# async def haftalar(message: types.Message):
+#     """
+#     :param message:
+#     """
+#     if message.text == '👨🏻‍💻Konsultatsiya👨🏻‍💻':
+#         await message.answer(f"Admin: t.me/mal_un")
+#         await message.answer('Hafta kunini tanlang:', reply_markup=hafta_kunlari)
+#         await User.kun.set()
+#     elif message.text == '👨‍💻Dasturchi👨‍💻':
+#         await message.answer(f"Jamshidbek Ollanazarov: t.me/mal_un")
+#         await message.answer('Hafta kunini tanlang:', reply_markup=hafta_kunlari)
+#         await User.kun.set()
+#     elif message.text == 'Boshiga qaytish':
+#         database_user_table_remove_data(message.from_user.id)
+#         database_user_remove_data(message.from_user.id)
+#         await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#         await User.username.set()
+#     elif message.text == "Yangilash":
+#         msgid = await message.answer("Yangilanmoqda...")
+#         telegram_id, student_id, student_parol, about = database_user_retrieve_data(message.from_user.id)
+#         database_user_table_remove_data(message.from_user.id)
+#         # database_user_remove_data(message.from_user.id)
+#         about = students_schedule(password=student_parol, username=student_id, telegram_id=telegram_id)
+#         await bot.delete_message(chat_id=message.from_user.id, message_id=msgid.message_id)
+#         await message.answer(about['reason'])
+#         await message.answer('Hafta kunini tanlang:', reply_markup=hafta_kunlari)
+#         await User.kun.set()
+#     elif kuntek(message.text):
+#         if database_user_table_retrieve_data(telegram_id=message.from_user.id, day=message.text) is not None:
+#             await message.answer(database_user_table_retrieve_data(telegram_id=message.from_user.id,
+#                                                                    day=message.text)[0],
+#                                  reply_markup=hafta_kunlari)
+#             await User.kun.set()
+#         else:
+#             await message.answer(
+#                 text='Sizning dars jadvalingizni yangilashda xatolik yuz berdi iltimos qaytadan urinib ko`ring.')
+#             await message.answer('Student id (username) ingizni kiriting:', reply_markup=keyboard_menyu_admin)
+#             await User.username.set()
+#     else:
+#         await message.answer('Bunday kun mavjud emas!', reply_markup=hafta_kunlari)
+#         await User.kun.set()
